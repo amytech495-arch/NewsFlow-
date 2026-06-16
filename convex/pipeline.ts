@@ -14,16 +14,16 @@ const getKey = (envName: string, fallback: string) =>
   process.env[envName] || fallback;
 
 const FALLBACKS: Record<string, string> = {
-  NEWSAPI_KEY: "YOUR_NEWSAPI_KEY",
-  GNEWS_KEY: "YOUR_GNEWS_KEY",
-  NEWSDATA_KEY: "YOUR_NEWSDATA_KEY",
-  CURRENTS_KEY: "YOUR_CURRENTS_KEY",
-  THENEWSAPI_KEY: "YOUR_THENEWSAPI_KEY",
-  TELEGRAM_TOKEN: "YOUR_TELEGRAM_TOKEN",
-  TELEGRAM_CHANNEL: "YOUR_TELEGRAM_CHANNEL",
-  GEMINI_API_KEY: "YOUR_GEMINI_API_KEY",
-  FACEBOOK_PAGE_ID: "YOUR_FACEBOOK_PAGE_ID",
-  FACEBOOK_PAGE_TOKEN: "YOUR_FACEBOOK_PAGE_TOKEN",
+  NEWSAPI_KEY: "YOUR_NEWSAPI_KEY_HERE",
+  GNEWS_KEY: "YOUR_GNEWS_KEY_HERE",
+  NEWSDATA_KEY: "YOUR_NEWSDATA_KEY_HERE",
+  CURRENTS_KEY: "YOUR_CURRENTS_KEY_HERE",
+  THENEWSAPI_KEY: "YOUR_THENEWSAPI_KEY_HERE",
+  TELEGRAM_TOKEN: "YOUR_TELEGRAM_TOKEN_HERE",
+  TELEGRAM_CHANNEL: "@facebooknewie",
+  GEMINI_API_KEY: "YOUR_GEMINI_API_KEY_HERE",
+  FACEBOOK_PAGE_ID: "YOUR_FB_PAGE_ID_HERE",
+  FACEBOOK_PAGE_TOKEN: "YOUR_FB_PAGE_TOKEN_HERE",
 };
 
 /**
@@ -303,14 +303,36 @@ export const rewriteWithGemini = action({
       return null;
     }
 
-    const styleGuide = args.style === "casual"
-      ? "Use a friendly, conversational tone — great for social media."
-      : args.style === "summary"
-        ? "Create a short, compressed summary with key facts only."
-        : "Use a formal, news-agency tone with clear and concise language.";
-
     try {
-      const prompt = `Rewrite this news article for a social media post. ${styleGuide} Keep the key facts. Return JSON with "title" and "content" fields only.
+      const prompt = `You are a human rewriter. Your job is to rewrite the text I give you so it sounds like it was written by a real, thoughtful human being — not an AI.
+
+Follow these rules strictly:
+
+**TONE & VOICE**
+- Write like a smart, articulate person talking to a friend or colleague
+- Use a natural, conversational tone — not formal or stiff
+- Vary sentence length: mix short punchy sentences with longer ones
+- Show personality — don't be bland or robotic
+
+**LANGUAGE**
+- Avoid AI-typical phrases like: "In conclusion", "It's worth noting", "Delve into", "It is important to", "Furthermore", "Moreover", "In today's world", "As an AI", "Certainly!", "Absolutely!"
+- Never start every sentence with "The"
+- Don't overuse adverbs like "very", "extremely", "highly"
+- Use contractions naturally (don't, it's, you're, we've)
+- Occasionally use informal transitions like "But here's the thing", "And honestly", "Look —", "Here's what I mean"
+
+**STRUCTURE**
+- Break up walls of text
+- Don't use bullet points unless the original had them
+- Avoid repetition — say things once, clearly
+- Start with something that hooks the reader, not a definition
+
+**FEEL**
+- Sound like someone who actually has opinions
+- Add light nuance or a small personal observation where it fits
+- Avoid being preachy or over-explaining
+
+Now rewrite this news article for a social media post. Keep the key facts. Return ONLY valid JSON with "title" and "content" fields.
 
 Title: ${args.title}
 Description: ${args.description || "N/A"}`;
@@ -368,6 +390,7 @@ export const sendToTelegram = action({
     url: v.string(),
     imageUrl: v.optional(v.string()),
     hashtags: v.optional(v.string()),
+    removeLinks: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
       await loadDbKeys(ctx);
@@ -384,7 +407,12 @@ export const sendToTelegram = action({
 
     try {
       const hashtagStr = args.hashtags || "#news #newsflow #breaking";
-      const text = `<b>${escapeHtml(args.title)}</b>\n\n${escapeHtml(args.content || "")}\n\n🔗 <a href="${args.url}">Read more</a>\n\n${hashtagStr}`;
+      let bodyText = args.content || "";
+      if (args.removeLinks) {
+        bodyText = bodyText.replace(/https?:\/\/[^\s<>"{}|\\^`[\]]+/gi, "").replace(/\s{2,}/g, " ").trim();
+      }
+      const linkLine = args.removeLinks ? "" : `\n\n🔗 <a href="${args.url}">Read more</a>`;
+      const text = `<b>${escapeHtml(args.title)}</b>\n\n${escapeHtml(bodyText)}${linkLine}\n\n${hashtagStr}`;
 
       let result: any;
 
@@ -462,6 +490,7 @@ export const postToFacebook = action({
     content: v.optional(v.string()),
     url: v.string(),
     hashtags: v.optional(v.string()),
+    removeLinks: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
       await loadDbKeys(ctx);
@@ -478,7 +507,12 @@ export const postToFacebook = action({
 
     try {
       const hashtagStr = args.hashtags || "#news #newsflow #breaking";
-      const message = `${args.title}\n\n${args.content || ""}\n\n🔗 ${args.url}\n\n${hashtagStr}`;
+      let fbBody = args.content || "";
+      if (args.removeLinks) {
+        fbBody = fbBody.replace(/https?:\/\/[^\s<>"{}|\\^`[\]]+/gi, "").replace(/\s{2,}/g, " ").trim();
+      }
+      const fbLinkLine = args.removeLinks ? "" : `\n\n🔗 ${args.url}`;
+      const message = `${args.title}\n\n${fbBody}${fbLinkLine}\n\n${hashtagStr}`;
 
       const res = await fetch(
         `https://graph.facebook.com/v21.0/${pageId}/feed`,
@@ -487,7 +521,7 @@ export const postToFacebook = action({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: message,
-            link: args.url,
+            ...(args.removeLinks ? {} : { link: args.url }),
             access_token: pageToken,
           }),
         }
@@ -622,6 +656,7 @@ export const runFullCycle = action({
     hashtags: v.optional(v.string()),
     useAiRewrite: v.optional(v.boolean()),
     rewriteStyle: v.optional(v.string()),
+    removeLinks: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     await loadDbKeys(ctx);
@@ -643,18 +678,37 @@ export const runFullCycle = action({
         apisToUse: 3,
       });
 
-    // Step 2: Get unsent articles
+    // Step 2: Get unsent articles for each platform separately
     const unsentTelegram = await ctx.runQuery(
       api.articles.unsent_telegram,
       {}
     );
-    const articlesToProcess = unsentTelegram.slice(0, maxPosts);
+    const unsentFacebook = await ctx.runQuery(
+      api.articles.unsent_facebook,
+      {}
+    );
+
+    // Build a unique set of articles to process (union, capped at maxPosts)
+    const articleMap = new Map<string, typeof unsentTelegram[0]>();
+    for (const a of unsentTelegram) articleMap.set(a._id, a);
+    for (const a of unsentFacebook) articleMap.set(a._id, a);
+    const articlesToProcess = [...articleMap.values()].slice(0, maxPosts);
+
+    // Track titles we've already sent THIS cycle to prevent near-duplicates
+    const sentTitles = new Set<string>();
 
     let telegramSent = 0;
     let facebookSent = 0;
+    let telegramSkipped = 0;
+    let facebookSkipped = 0;
     let errors = 0;
 
     for (const article of articlesToProcess) {
+      // Skip near-duplicate titles within this cycle
+      const normalizedTitle = article.title.toLowerCase().trim();
+      if (sentTitles.has(normalizedTitle)) continue;
+      sentTitles.add(normalizedTitle);
+
       let title = article.title;
       let content = article.description || "";
 
@@ -677,44 +731,63 @@ export const runFullCycle = action({
         }
       }
 
-      // Send to Telegram
-      try {
-        const tgResult = await ctx.runAction(api.pipeline.sendToTelegram, {
-          articleId: article._id,
-          title,
-          content,
-          url: article.url,
-          imageUrl: article.imageUrl,
-          hashtags,
-        });
-        if (tgResult.success) telegramSent++;
-        else errors++;
-      } catch {
-        errors++;
+      // Strip URLs from content if removeLinks is on
+      if (args.removeLinks) {
+        content = content.replace(/https?:\/\/[^\s<>"{}|\\^`[\]]+/gi, "").replace(/\s{2,}/g, " ").trim();
       }
 
-      // Post to Facebook
-      try {
-        const fbResult = await ctx.runAction(api.pipeline.postToFacebook, {
-          articleId: article._id,
-          title,
-          content,
-          url: article.url,
-          hashtags,
-        });
-        if (fbResult.success) facebookSent++;
-        else errors++;
-      } catch {
-        errors++;
+      // Send to Telegram ONLY if not already sent
+      if (!article.sentToTelegram) {
+        try {
+          const tgResult = await ctx.runAction(api.pipeline.sendToTelegram, {
+            articleId: article._id,
+            title,
+            content,
+            url: article.url,
+            imageUrl: article.imageUrl,
+            hashtags,
+            removeLinks: args.removeLinks,
+          });
+          if (tgResult.success) telegramSent++;
+          else errors++;
+        } catch {
+          errors++;
+        }
+      } else {
+        telegramSkipped++;
+      }
+
+      // Post to Facebook ONLY if not already sent
+      if (!article.sentToFacebook) {
+        try {
+          const fbResult = await ctx.runAction(api.pipeline.postToFacebook, {
+            articleId: article._id,
+            title,
+            content,
+            url: article.url,
+            hashtags,
+            removeLinks: args.removeLinks,
+          });
+          if (fbResult.success) facebookSent++;
+          else errors++;
+        } catch {
+          errors++;
+        }
+      } else {
+        facebookSkipped++;
       }
 
       await new Promise((r) => setTimeout(r, 2000));
     }
 
+    const summary = `Cycle complete: ${fetchResult.totalFetched} fetched, ${telegramSent} to Telegram, ${facebookSent} to Facebook` +
+      (errors > 0 ? `, ${errors} errors` : "") +
+      (telegramSkipped + facebookSkipped > 0 ? ` (${telegramSkipped + facebookSkipped} already sent, skipped)` : "");
+
     await ctx.runMutation(api.logs.add, {
       type: "automation",
-      message: `Cycle complete: ${fetchResult.totalFetched} fetched, ${telegramSent} to Telegram, ${facebookSent} to Facebook, ${errors} errors`,
-      status: errors > 0 ? "warning" : "success",
+      message: summary,
+      status: "success",
     });
 
     return {

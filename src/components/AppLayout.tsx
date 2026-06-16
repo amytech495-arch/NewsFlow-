@@ -30,7 +30,7 @@ export function AppLayout() {
       <AppSidebar />
       <SidebarInset>
         {/* Top header bar — always visible */}
-        <header className="sticky top-0 z-30 flex h-14 items-center border-b border-border bg-background/80 backdrop-blur-md px-4">
+        <header className="sticky top-0 z-30 flex h-14 items-center border-b border-border bg-background px-4">
           {/* Left: Sidebar trigger */}
           <div className="flex items-center w-10">
             <SidebarTrigger className="md:hidden" />
@@ -81,38 +81,12 @@ export function AppLayout() {
             position: relative;
           }
 
-          .newsflow-icon-wrapper::after {
-            content: '';
-            position: absolute;
-            inset: -2px;
-            border-radius: 10px;
-            background: linear-gradient(135deg, #3b82f6, #6366f1, #8b5cf6, #3b82f6);
-            background-size: 300% 300%;
-            animation: newsflowGlow 4s ease-in-out infinite;
-            z-index: -1;
-            opacity: 0.5;
-            filter: blur(4px);
-          }
-
           @keyframes newsflowPulse {
             0%, 100% {
-              transform: scale(1);
               box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
             }
             50% {
-              transform: scale(1.08);
               box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
-            }
-          }
-
-          @keyframes newsflowGlow {
-            0%, 100% {
-              background-position: 0% 50%;
-              opacity: 0.4;
-            }
-            50% {
-              background-position: 100% 50%;
-              opacity: 0.7;
             }
           }
         `}</style>

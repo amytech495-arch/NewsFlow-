@@ -38,7 +38,7 @@ export const unsent_facebook = query({
   },
 });
 
-// Store a new article (dedup by urlHash)
+// Store a new article (dedup by urlHash + title similarity)
 export const store = mutation({
   args: {
     title: v.string(),
@@ -52,12 +52,24 @@ export const store = mutation({
     urlHash: v.string(),
   },
   handler: async (ctx, args) => {
-    // Check for duplicate
+    // Check for duplicate by URL hash
     const existing = await ctx.db
       .query("articles")
       .withIndex("by_urlHash", (q) => q.eq("urlHash", args.urlHash))
       .first();
     if (existing) return null;
+
+    // Also check for duplicate by exact title (same story from different APIs)
+    const normalizedTitle = args.title.toLowerCase().trim();
+    const recentArticles = await ctx.db
+      .query("articles")
+      .withIndex("by_fetchedAt")
+      .order("desc")
+      .take(100);
+    const titleDupe = recentArticles.find(
+      (a) => a.title.toLowerCase().trim() === normalizedTitle
+    );
+    if (titleDupe) return null;
 
     return await ctx.db.insert("articles", {
       ...args,
